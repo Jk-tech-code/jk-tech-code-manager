@@ -37,6 +37,12 @@ const toMinorUnits = (value: unknown): number | null => {
 const legacyMinorUnits = (minor: unknown, amount: unknown): number => {
   if (typeof minor === 'number' && Number.isSafeInteger(minor) && minor >= 0)
     return minor;
+  // Older releases allowed more than two decimal places. Preserve their value
+  // to the nearest KES cent rather than displaying zero for a legacy record.
+  if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) {
+    const rounded = Math.round(amount * 100);
+    return Number.isSafeInteger(rounded) ? rounded : 0;
+  }
   return toMinorUnits(amount) ?? 0;
 };
 
