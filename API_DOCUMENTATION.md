@@ -16,3 +16,15 @@ Project writes accept `budget`; invoice writes accept `amount` and optional `pai
 Validation errors return HTTP 400; missing project update returns HTTP 404. Authentication failures are handled by AppDeploy middleware.
 
 Leads, tasks, quotations, expenses, payment callbacks, client portal, staff administration and organization management APIs are not implemented.
+
+
+## Workspace pagination
+
+- `GET /api/workspace` returns the first page of up to 100 clients, projects and invoices, plus `nextTokens` for collections with more records.
+- `GET /api/workspace?kind=clients&cursor=<opaque-token>` returns `{ items, nextToken? }` for one additional page. Supported kinds are `clients`, `projects` and `invoices`.
+- A cursor without a valid record kind is rejected. Cursors longer than 2,048 characters are rejected.
+- The client appends new rows and filters duplicate record IDs.
+
+## Concurrent project updates
+
+`PUT /api/projects/:id` uses the current server-side revision as a conditional write guard. Successful updates return `{ updated: true, revision }`. A stale update returns HTTP 409 with a reload-and-retry message.
