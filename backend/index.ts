@@ -46,13 +46,18 @@ const legacyMinorUnits = (minor: unknown, amount: unknown): number => {
   return toMinorUnits(amount) ?? 0;
 };
 
-async function listRecords(kind: RecordKind, userId: string) {
+async function listRecords(
+  kind: RecordKind,
+  userId: string,
+  nextToken?: string
+) {
   const result = await db.list<RecordBody>(tableFor(kind, userId), {
     limit: 100,
+    ...(nextToken ? { nextToken } : {}),
   });
 
   // Normalize legacy decimal records while exposing canonical minor units.
-  return result.items.map(item => {
+  const items = result.items.map(item => {
     if (kind === 'projects') {
       const budgetMinor = legacyMinorUnits(item.budgetMinor, item.budget);
       return { ...item, budgetMinor, budget: budgetMinor / 100 };
@@ -70,6 +75,8 @@ async function listRecords(kind: RecordKind, userId: string) {
     }
     return item;
   });
+
+  return { items, nextToken: result.nextToken };
 }
 
 async function getOwnedClient(userId: string, clientId: string) {
@@ -193,10 +200,13 @@ async function createRecord(
     };
   }
 
+  const now = new Date().toISOString();
   const record = {
     ...fields,
     ownerId: userId,
-    createdAt: new Date().toISOString(),
+    revision: 1,
+    createdAt: now,
+    updatedAt: now,
   };
   const [id] = await db.add(tableFor(kind, userId), [record]);
   if (!id) return { error: 'Record could not be created' };
@@ -208,12 +218,40 @@ export const handler = router({
     requireAuth(),
     async ctx => {
       const userId = ctx.user!.userId;
+      const requestedKind = ctx.query.kind;
+      const cursor = ctx.query.cursor;
+
+      if (cursor && !requestedKind)
+        return error('A record type is required when using a page cursor', 400);
+      if (cursor && cursor.length > 2048)
+        return error('The page cursor is invalid', 400);
+
+      if (requestedKind) {
+        if (!['clients', 'projects', 'invoices'].includes(requestedKind))
+          return error('Choose a valid workspace record type', 400);
+        const page = await listRecords(
+          requestedKind as RecordKind,
+          userId,
+          cursor || undefined
+        );
+        return json(page);
+      }
+
       const [clients, projects, invoices] = await Promise.all([
         listRecords('clients', userId),
         listRecords('projects', userId),
         listRecords('invoices', userId),
       ]);
-      return json({ clients, projects, invoices });
+      return json({
+        clients: clients.items,
+        projects: projects.items,
+        invoices: invoices.items,
+        nextTokens: {
+          clients: clients.nextToken,
+          projects: projects.nextToken,
+          invoices: invoices.nextToken,
+        },
+      });
     },
   ],
   'POST /api/clients': [
@@ -255,14 +293,28 @@ export const handler = router({
       if (result.error) return error(result.error, 400);
 
       const record = {
+        ...current,
         ...result.record,
         ownerId: userId,
         createdAt: current.createdAt,
+        updatedAt: new Date().toISOString(),
+        revision:
+          Number.isSafeInteger(current.revision) && Number(current.revision) >= 0
+            ? Number(current.revision) + 1
+            : 1,
       };
-      const [updated] = await db.update(tableFor('projects', userId), [
-        { id: ctx.params.id, record },
-      ]);
-      return updated ? json({ updated: true }) : error('Project was not found', 404);
+      const [updated] = await db.tx.update(
+        tableFor('projects', userId),
+        [{
+          id: ctx.params.id,
+          record,
+          if: { revision: current.revision },
+        }],
+        { patch: true }
+      );
+      return updated
+        ? json({ updated: true, revision: record.revision })
+        : error('This project changed while you were editing it. Reload and try again.', 409);
     },
   ],
   'POST /api/invoices': [
