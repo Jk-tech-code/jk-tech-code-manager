@@ -25,3 +25,8 @@
 7. Test cross-tenant access, privilege escalation, replay and duplicate callbacks.
 
 This is a factual posture note, not a certification or penetration-test report.
+
+
+## P1 write integrity
+
+Project updates are scoped to the authenticated user's project table and use a conditional revision patch. Stale concurrent updates are rejected with HTTP 409. This reduces lost-update risk; it is not a substitute for organization-level RBAC or tenant isolation, which remain outstanding.
