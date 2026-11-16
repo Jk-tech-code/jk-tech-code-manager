@@ -58,6 +58,8 @@ async function listRecords(
 
   // Normalize legacy decimal records while exposing canonical minor units.
   const items = result.items.map(item => {
+    const { requestFingerprint: _requestFingerprint, ...publicItem } = item;
+    item = publicItem;
     if (kind === 'projects') {
       const budgetMinor = legacyMinorUnits(item.budgetMinor, item.budget);
       return { ...item, budgetMinor, budget: budgetMinor / 100 };
@@ -154,11 +156,21 @@ async function validateProject(
   };
 }
 
+type CreateResult = {
+  error?: string;
+  status?: number;
+  record?: RecordBody;
+};
+
 async function createRecord(
   kind: RecordKind,
   userId: string,
   body: RecordBody
-) {
+): Promise<CreateResult> {
+  const requestId = text(body.requestId, 64);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))
+    return { error: 'A valid request ID is required', status: 400 };
+
   let fields: RecordBody;
   if (kind === 'clients') {
     const result = validateClient(body);
@@ -186,7 +198,9 @@ async function createRecord(
     const paid = paidMinor / 100;
     const dueDate = body.dueDate ?? '';
     if (!validDate(dueDate)) return { error: 'Enter a valid invoice due date' };
-    const number = text(body.number, 40) || 'INV-' + Date.now().toString().slice(-8);
+    const number =
+      text(body.number, 40) ||
+      'INV-' + requestId.replace(/-/g, '').slice(0, 8).toUpperCase();
     fields = {
       number,
       clientId,
@@ -200,6 +214,22 @@ async function createRecord(
     };
   }
 
+  const table = tableFor(kind, userId);
+  const payloadFingerprint = JSON.stringify({ kind, fields });
+  const [existing] = await db.get<RecordBody>(table, [requestId], {
+    consistent: true,
+  });
+
+  if (existing) {
+    if (existing.requestFingerprint !== payloadFingerprint)
+      return {
+        error: 'This submission ID was already used for different details',
+        status: 409,
+      };
+    const { requestFingerprint: _requestFingerprint, ...savedRecord } = existing;
+    return { record: { ...savedRecord, id: requestId } };
+  }
+
   const now = new Date().toISOString();
   const record = {
     ...fields,
@@ -207,10 +237,37 @@ async function createRecord(
     revision: 1,
     createdAt: now,
     updatedAt: now,
+    requestFingerprint: payloadFingerprint,
   };
-  const [id] = await db.add(tableFor(kind, userId), [record]);
-  if (!id) return { error: 'Record could not be created' };
-  return { record: { ...record, id } };
+
+  try {
+    const [id] = await db.tx.add(table, [{ id: requestId, ...record }]);
+    if (id) {
+      const { requestFingerprint: _requestFingerprint, ...publicRecord } = record;
+      return { record: { ...publicRecord, id } };
+    }
+  } catch {
+    // Reconcile below using the same stable request ID. Never create a new ID
+    // after an uncertain outcome because the original write may have committed.
+  }
+
+  const [saved] = await db.get<RecordBody>(table, [requestId], {
+    consistent: true,
+  });
+  if (saved) {
+    if (saved.requestFingerprint !== payloadFingerprint)
+      return {
+        error: 'This submission ID was already used for different details',
+        status: 409,
+      };
+    const { requestFingerprint: _requestFingerprint, ...savedRecord } = saved;
+    return { record: { ...savedRecord, id: requestId } };
+  }
+
+  return {
+    error: 'The save outcome could not be confirmed. Retry the same unchanged submission.',
+    status: 503,
+  };
 }
 
 export const handler = router({
@@ -260,7 +317,7 @@ export const handler = router({
       if (!isObject(ctx.body))
         return error('A valid client record is required', 400);
       const result = await createRecord('clients', ctx.user!.userId, ctx.body);
-      return result.error ? error(result.error, 400) : json(result.record, 201);
+      return result.error ? error(result.error, result.status || 400) : json(result.record, 201);
     },
   ],
   'POST /api/projects': [
@@ -269,7 +326,7 @@ export const handler = router({
       if (!isObject(ctx.body))
         return error('A valid project record is required', 400);
       const result = await createRecord('projects', ctx.user!.userId, ctx.body);
-      return result.error ? error(result.error, 400) : json(result.record, 201);
+      return result.error ? error(result.error, result.status || 400) : json(result.record, 201);
     },
   ],
   'PUT /api/projects/:id': [
@@ -323,7 +380,7 @@ export const handler = router({
       if (!isObject(ctx.body))
         return error('A valid invoice record is required', 400);
       const result = await createRecord('invoices', ctx.user!.userId, ctx.body);
-      return result.error ? error(result.error, 400) : json(result.record, 201);
+      return result.error ? error(result.error, result.status || 400) : json(result.record, 201);
     },
   ],
 });
