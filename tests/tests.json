@@ -54,9 +54,11 @@
       "Enter a service, budget and due date",
       "Save the project",
       "Change its status to In Progress",
-      "Try an invalid progress value above 100"
+      "Try an invalid progress value above 100",
+      "Attempt to set the due date to impossible date 2026-02-31 and verify it is rejected",
+      "Set a valid due date of 2026-02-28 and save"
     ],
-    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected."
+    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected. An impossible date such as 2026-02-31 is rejected, while 2026-02-28 is accepted."
   },
   {
     "name": "Create an invoice and calculate outstanding balance",
@@ -80,5 +82,26 @@
       "Attempt to save an invoice with paid amount greater than its total"
     ],
     "expected": "The valid invoice shows KES 50,000 total and KES 10,000 paid; an overpayment input is rejected."
+  },
+  {
+    "name": "Preserve exact KES cents in project and invoice totals",
+    "viewport": "desktop",
+    "covers": [
+      "KES amount precision to two decimal places",
+      "integer minor-unit invoice and project budget storage",
+      "legacy monetary record compatibility",
+      "exact outstanding balance calculation"
+    ],
+    "description": "Verifies money values are stored and calculated as integer cents while older records remain readable.",
+    "setup": [
+      "Create a client named Precision Test Ltd"
+    ],
+    "steps": [
+      "Create a project with a budget of KES 1250.75",
+      "Create an invoice for KES 1250.75 with KES 200.25 already paid",
+      "Open Overview and Invoices",
+      "Attempt to create an invoice with an amount containing three decimal places, such as 10.123"
+    ],
+    "expected": "The project and invoice retain their exact two-decimal values, the paid amount is KES 200.25, the outstanding amount is KES 1050.50, and the three-decimal amount is rejected."
   }
 ]
