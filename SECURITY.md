@@ -30,3 +30,8 @@ This is a factual posture note, not a certification or penetration-test report.
 ## P1 write integrity
 
 Project updates are scoped to the authenticated user's project table and use a conditional revision patch. Stale concurrent updates are rejected with HTTP 409. This reduces lost-update risk; it is not a substitute for organization-level RBAC or tenant isolation, which remain outstanding.
+
+
+## Idempotent create requests
+
+Create endpoints require a UUID request ID. The ID is scoped to the authenticated user's record collection, and the backend compares a fingerprint of normalized server-validated fields before returning an existing record. Reusing an ID with different content is rejected. Internal fingerprints are excluded from API responses. This is application-level create protection, not a verified payment callback or immutable accounting ledger.
