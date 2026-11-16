@@ -11,18 +11,59 @@ const text = (value: unknown, max: number) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
 const numberValue = (value: unknown) =>
   typeof value === 'number' ? value : Number(value);
-const validDate = (value: unknown) =>
-  value === undefined ||
-  value === '' ||
-  (typeof value === 'string' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    !Number.isNaN(Date.parse(value + 'T00:00:00Z')));
+const validDate = (value: unknown) => {
+  if (value === undefined || value === '') return true;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
+  const parsed = new Date(value + 'T00:00:00.000Z');
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+};
+
+// Parse KES decimal input as integer minor units without float arithmetic.
+const toMinorUnits = (value: unknown): number | null => {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const raw = String(value).trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) return null;
+  const [whole, fraction = ''] = raw.split('.');
+  const minor = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  return Number.isSafeInteger(minor) && minor <= 100_000_000_000_000
+    ? minor
+    : null;
+};
+
+const legacyMinorUnits = (minor: unknown, amount: unknown): number => {
+  if (typeof minor === 'number' && Number.isSafeInteger(minor) && minor >= 0)
+    return minor;
+  return toMinorUnits(amount) ?? 0;
+};
 
 async function listRecords(kind: RecordKind, userId: string) {
   const result = await db.list<RecordBody>(tableFor(kind, userId), {
     limit: 100,
   });
-  return result.items;
+
+  // Normalize legacy decimal records while exposing canonical minor units.
+  return result.items.map(item => {
+    if (kind === 'projects') {
+      const budgetMinor = legacyMinorUnits(item.budgetMinor, item.budget);
+      return { ...item, budgetMinor, budget: budgetMinor / 100 };
+    }
+    if (kind === 'invoices') {
+      const amountMinor = legacyMinorUnits(item.amountMinor, item.amount);
+      const paidMinor = legacyMinorUnits(item.paidMinor, item.paid);
+      return {
+        ...item,
+        amountMinor,
+        paidMinor,
+        amount: amountMinor / 100,
+        paid: paidMinor / 100,
+      };
+    }
+    return item;
+  });
 }
 
 async function getOwnedClient(userId: string, clientId: string) {
@@ -59,13 +100,22 @@ async function validateProject(
   const service = text(body.service ?? existing?.service, 120);
   const dueDate = body.dueDate ?? existing?.dueDate ?? '';
   const status = text(body.status ?? existing?.status ?? 'Planning', 24);
-  const budget = numberValue(body.budget ?? existing?.budget ?? 0);
+  const budgetInput =
+    body.budget !== undefined
+      ? body.budget
+      : existing?.budgetMinor !== undefined
+        ? (Number(existing.budgetMinor) / 100).toFixed(2)
+        : existing?.budget ?? 0;
+  const budgetMinor = toMinorUnits(budgetInput);
+  const budget = budgetMinor === null ? NaN : budgetMinor / 100;
   const progress = numberValue(body.progress ?? existing?.progress ?? 0);
 
   if (!name) return { error: 'Project name is required' };
   if (!clientId) return { error: 'Select a client for this project' };
-  if (!Number.isFinite(budget) || budget < 0 || budget > 1_000_000_000_000)
-    return { error: 'Project budget must be a valid non-negative amount' };
+  if (budgetMinor === null)
+    return {
+      error: 'Project budget must be a non-negative KES amount with at most two decimal places',
+    };
   if (!Number.isInteger(progress) || progress < 0 || progress > 100)
     return { error: 'Project progress must be a whole number from 0 to 100' };
   if (!validDate(dueDate)) return { error: 'Enter a valid project due date' };
@@ -85,6 +135,7 @@ async function validateProject(
       dueDate: text(dueDate, 10),
       status,
       budget,
+      budgetMinor,
       progress,
     },
   };
@@ -107,13 +158,19 @@ async function createRecord(
   } else {
     const clientId = text(body.clientId, 128);
     const client = await getOwnedClient(userId, clientId);
-    const amount = numberValue(body.amount);
-    const paid = numberValue(body.paid ?? 0);
+    const amountMinor = toMinorUnits(body.amount);
+    const paidMinor = toMinorUnits(body.paid ?? 0);
     if (!client) return { error: 'Select a valid client from this workspace' };
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000_000)
-      return { error: 'Invoice amount must be greater than zero' };
-    if (!Number.isFinite(paid) || paid < 0 || paid > amount)
-      return { error: 'Paid amount must be between zero and the invoice total' };
+    if (amountMinor === null || amountMinor <= 0)
+      return {
+        error: 'Invoice amount must be positive KES with at most two decimal places',
+      };
+    if (paidMinor === null || paidMinor > amountMinor)
+      return {
+        error: 'Paid amount must be between zero and the invoice total, with at most two decimal places',
+      };
+    const amount = amountMinor / 100;
+    const paid = paidMinor / 100;
     const dueDate = body.dueDate ?? '';
     if (!validDate(dueDate)) return { error: 'Enter a valid invoice due date' };
     const number = text(body.number, 40) || 'INV-' + Date.now().toString().slice(-8);
@@ -123,6 +180,8 @@ async function createRecord(
       clientName: text(client.name, 120),
       amount,
       paid,
+      amountMinor,
+      paidMinor,
       dueDate: text(dueDate, 10),
       status: paid >= amount ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Unpaid',
     };

@@ -42,6 +42,7 @@ type Project = {
   status: string;
   dueDate: string;
   budget: number;
+  budgetMinor?: number;
   progress: number;
   createdAt: string;
 };
@@ -52,6 +53,8 @@ type Invoice = {
   clientName: string;
   amount: number;
   paid: number;
+  amountMinor?: number;
+  paidMinor?: number;
   dueDate: string;
   status: string;
   createdAt: string;
@@ -60,12 +63,30 @@ type Data = { clients: Client[]; projects: Project[]; invoices: Invoice[] };
 type Section = 'Overview' | 'Clients' | 'Projects' | 'Invoices';
 
 const empty: Data = { clients: [], projects: [], invoices: [] };
-const money = (n: number) =>
+const toMinorUnits = (amount: number) =>
+  Math.round((Number.isFinite(amount) ? amount : 0) * 100);
+const projectBudgetMinor = (project: Project) =>
+  typeof project.budgetMinor === 'number' &&
+  Number.isSafeInteger(project.budgetMinor)
+    ? project.budgetMinor
+    : toMinorUnits(project.budget);
+const invoiceAmountMinor = (invoice: Invoice) =>
+  typeof invoice.amountMinor === 'number' &&
+  Number.isSafeInteger(invoice.amountMinor)
+    ? invoice.amountMinor
+    : toMinorUnits(invoice.amount);
+const invoicePaidMinor = (invoice: Invoice) =>
+  typeof invoice.paidMinor === 'number' &&
+  Number.isSafeInteger(invoice.paidMinor)
+    ? invoice.paidMinor
+    : toMinorUnits(invoice.paid);
+const moneyMinor = (minor: number) =>
   new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency: 'KES',
-    maximumFractionDigits: 0,
-  }).format(n || 0);
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format((Number.isFinite(minor) ? minor : 0) / 100);
 const dateLabel = (value: string) =>
   value
     ? new Date(value + 'T00:00:00').toLocaleDateString('en-KE', {
@@ -145,13 +166,22 @@ function App() {
   }
 
   const stats = useMemo(() => {
-    const revenue = data.invoices.reduce((sum, item) => sum + item.paid, 0);
-    const outstanding = data.invoices.reduce(
-      (sum, item) => sum + Math.max(0, item.amount - item.paid),
+    const revenueMinor = data.invoices.reduce(
+      (sum, item) => sum + invoicePaidMinor(item),
+      0
+    );
+    const outstandingMinor = data.invoices.reduce(
+      (sum, item) =>
+        sum + Math.max(0, invoiceAmountMinor(item) - invoicePaidMinor(item)),
       0
     );
     const active = data.projects.filter(p => p.status !== 'Completed').length;
-    return { revenue, outstanding, active, clients: data.clients.length };
+    return {
+      revenueMinor,
+      outstandingMinor,
+      active,
+      clients: data.clients.length,
+    };
   }, [data]);
 
   const filteredClients = data.clients.filter(c =>
@@ -367,14 +397,14 @@ function App() {
                 <Stat
                   icon={<CircleDollarSign />}
                   label="Collected revenue"
-                  value={money(stats.revenue)}
+                  value={moneyMinor(stats.revenueMinor)}
                   hint="Payments received"
                   tone="green"
                 />
                 <Stat
                   icon={<Clock3 />}
                   label="Outstanding"
-                  value={money(stats.outstanding)}
+                  value={moneyMinor(stats.outstandingMinor)}
                   hint="Awaiting payment"
                   tone="amber"
                 />
@@ -433,7 +463,7 @@ function App() {
                   </div>
                   <div className="finance-block">
                     <span>Collected</span>
-                    <strong>{money(stats.revenue)}</strong>
+                    <strong>{moneyMinor(stats.revenueMinor)}</strong>
                     <div className="finance-line">
                       <i
                         style={{
@@ -460,7 +490,7 @@ function App() {
                   </div>
                   <div className="mini-stat">
                     <span>Outstanding balance</span>
-                    <strong>{money(stats.outstanding)}</strong>
+                    <strong>{moneyMinor(stats.outstandingMinor)}</strong>
                   </div>
                   <div className="mini-stat">
                     <span>Invoices issued</span>
@@ -617,7 +647,7 @@ function App() {
                             </div>
                           </td>
                           <td>{dateLabel(p.dueDate)}</td>
-                          <td>{money(p.budget)}</td>
+                          <td>{moneyMinor(projectBudgetMinor(p))}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -652,15 +682,15 @@ function App() {
                             <strong>{i.number}</strong>
                           </td>
                           <td>{i.clientName}</td>
-                          <td>{money(i.amount)}</td>
-                          <td>{money(i.paid)}</td>
+                          <td>{moneyMinor(invoiceAmountMinor(i))}</td>
+                          <td>{moneyMinor(invoicePaidMinor(i))}</td>
                           <td>{dateLabel(i.dueDate)}</td>
                           <td>
                             <Status
                               value={
-                                i.paid >= i.amount
+                                invoicePaidMinor(i) >= invoiceAmountMinor(i)
                                   ? 'Paid'
-                                  : i.paid > 0
+                                  : invoicePaidMinor(i) > 0
                                     ? 'Partially Paid'
                                     : i.status
                               }
@@ -916,6 +946,7 @@ function RecordModal({
               <Field
                 label="Budget (KES)"
                 type="number"
+                step={0.01}
                 value={form.budget || ''}
                 onChange={v => change('budget', v)}
                 placeholder="0"
@@ -966,6 +997,7 @@ function RecordModal({
               <Field
                 label="Amount (KES)"
                 type="number"
+                step={0.01}
                 required
                 value={form.amount || ''}
                 onChange={v => change('amount', v)}
@@ -976,6 +1008,7 @@ function RecordModal({
               <Field
                 label="Paid so far (KES)"
                 type="number"
+                step={0.01}
                 value={form.paid || '0'}
                 onChange={v => change('paid', v)}
                 placeholder="0"

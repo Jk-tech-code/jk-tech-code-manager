@@ -1,6 +1,6 @@
-# JK Tech Client & Project Manager
+# JK Tech Business Manager
 
-A client, project, and invoice workspace built for JK Tech Code.
+A client, project, and invoice workspace built for JK Tech Code, designed to grow into a secure business operations SaaS for African SMEs.
 
 ## Features
 
@@ -32,3 +32,20 @@ Live application: https://jk-tech-client-project-manager-2slezn.v2.appdeploy.ai/
 
 - Do not commit credentials, access tokens, environment files, or production data.
 - The `tests/tests.json` file contains AppDeploy workflow test definitions.
+
+
+## Current release scope
+
+The deployed release provides authenticated, user-scoped client, project and invoice workflows. Project and invoice amounts now include integer KES minor-unit fields while legacy decimal fields remain available for compatibility. Workspace reads are bounded to 100 records per entity; pagination remains planned.
+
+## Security and architecture boundaries
+
+- AppDeploy authentication protects workspace API routes.
+- Records are partitioned by authenticated user ID; organization membership, staff roles and multi-tenant organization administration are not yet implemented.
+- AppDeploy uses a key-value/document database, not relational SQL migrations.
+- M-Pesa, external AI, client portal, quotations, expense ledger and automated workflows remain roadmap items.
+- Workflow definitions in `tests/tests.json` are specifications, not proof of execution.
+
+## Engineering documentation
+
+See [Architecture](ARCHITECTURE.md), [Database schema](DATABASE_SCHEMA.md), [Security](SECURITY.md), [API](API_DOCUMENTATION.md), [Deployment](DEPLOYMENT.md), [Testing](TESTING.md), [Changelog](CHANGELOG.md), and [Implementation roadmap](IMPLEMENTATION_ROADMAP.md).
