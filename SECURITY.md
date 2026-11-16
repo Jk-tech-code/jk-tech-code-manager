@@ -35,3 +35,6 @@ Project updates are scoped to the authenticated user's project table and use a c
 ## Idempotent create requests
 
 Create endpoints require a UUID request ID. The ID is scoped to the authenticated user's record collection, and the backend compares a fingerprint of normalized server-validated fields before returning an existing record. Reusing an ID with different content is rejected. Internal fingerprints are excluded from API responses. This is application-level create protection, not a verified payment callback or immutable accounting ledger.
+
+
+Database error handling is deliberately narrow: only duplicate-ID and unknown-outcome writes are reconciled against the same chosen record ID. Quota, authorization, gateway and unrelated write failures are not hidden as retryable responses.
