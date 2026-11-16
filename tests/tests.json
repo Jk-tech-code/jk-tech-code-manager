@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Sign in and load a private workspace",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "authentication redirect and session restoration",
+      "user-scoped client project and invoice data",
+      "dashboard totals and empty states"
+    ],
+    "description": "Verifies an authenticated owner can open the workspace and see only their own saved business records.",
+    "steps": [
+      "Open the application while signed out",
+      "Sign in through the AppDeploy login screen",
+      "Wait for the workspace dashboard to load"
+    ],
+    "expected": "The signed-in owner sees the dashboard and only records belonging to their account."
+  },
+  {
+    "name": "Create a client and retain it after refresh",
+    "viewport": "desktop",
+    "covers": [
+      "client creation",
+      "required client-name validation",
+      "database persistence and workspace reload"
+    ],
+    "description": "Verifies client details can be saved and remain available after the workspace reloads.",
+    "steps": [
+      "Open Clients and choose Add client",
+      "Enter a client name, company and email",
+      "Save the client",
+      "Refresh the page and return to Clients"
+    ],
+    "expected": "The newly created client appears in the client directory after refresh."
+  },
+  {
+    "name": "Create and update a project",
+    "viewport": "desktop",
+    "covers": [
+      "project creation and client association",
+      "project budget and deadline",
+      "project status update",
+      "progress display"
+    ],
+    "description": "Verifies a project can be created for a client and its delivery status can be changed.",
+    "setup": ["Create a client named Acme Studio"],
+    "steps": [
+      "Open Projects and create a project for Acme Studio",
+      "Enter a service, budget and due date",
+      "Save the project",
+      "Change its status to In Progress"
+    ],
+    "expected": "The project appears with its client, budget and deadline, and the selected status remains visible."
+  },
+  {
+    "name": "Create an invoice and calculate outstanding balance",
+    "viewport": "mobile",
+    "covers": [
+      "invoice creation and client association",
+      "payment amount tracking",
+      "outstanding balance calculation",
+      "responsive mobile forms and tables"
+    ],
+    "description": "Verifies an invoice records its amount and paid portion and the dashboard reflects the remaining balance.",
+    "setup": ["Create a client named Northstar Ltd"],
+    "steps": [
+      "Open Invoices and choose New invoice",
+      "Select Northstar Ltd and enter an amount of 50000 with 10000 paid",
+      "Save the invoice",
+      "Open Overview"
+    ],
+    "expected": "The invoice shows KES 50,000 total and KES 10,000 paid, and outstanding balance increases by KES 40,000."
+  }
+]
