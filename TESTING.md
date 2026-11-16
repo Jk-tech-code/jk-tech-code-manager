@@ -22,3 +22,8 @@ The five workflow definitions now cover:
 - Existing client/project/invoice workflows and KES minor-unit calculations.
 
 The deployment QA snapshot reported zero frontend and network errors and zero backend errors. These are platform QA diagnostics, not a separately executed count of all five workflow scenarios.
+
+
+## Idempotent create retry scenario
+
+The client-creation workflow includes retrying an unchanged submission after a simulated lost response. The expected outcome is one saved client, with the original record returned on retry. Reusing the same request ID with different data must return HTTP 409. A request whose outcome cannot be reconciled returns HTTP 503 and must retain the same request ID for a safe retry.
