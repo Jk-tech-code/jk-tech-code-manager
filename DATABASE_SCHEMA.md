@@ -27,3 +27,8 @@ Organizations, memberships, roles, leads, tasks, milestones, quotations, payment
 - New records include `revision: 1` and `updatedAt`.
 - Project edits advance `revision` and set `updatedAt`. The update uses a conditional patch against the previous revision, including an absence condition for legacy records without a revision.
 - This is optimistic concurrency control, not a full transaction across related business records.
+
+
+## Idempotency metadata
+
+Newly created client, project and invoice records use the client-generated UUID request ID as their database record ID and store an internal `requestFingerprint` derived from the normalized validated fields. The fingerprint is removed from API responses. A matching retry returns the existing record; reuse of the ID for different normalized fields is rejected. This avoids a second receipt table and keeps the record and idempotency marker in one chosen-ID write.
