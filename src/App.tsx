@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@appdeploy/client';
 import { auth } from '@appdeploy/client';
 import {
@@ -895,31 +895,44 @@ function RecordModal({
   ) => Promise<void>;
 }) {
   const [form, setForm] = useState<Record<string, string>>({});
+  const requestRef = useRef<{ signature: string; id: string } | null>(null);
   const change = (key: string, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const client = clients.find(c => c.id === form.clientId);
-    const base = { ...form, createdAt: new Date().toISOString() };
-    if (kind === 'client')
-      onSave('clients', { ...base, status: form.status || 'Active' });
-    if (kind === 'project')
-      onSave('projects', {
-        ...base,
+    let targetKind: 'clients' | 'projects' | 'invoices';
+    let payload: Record<string, unknown>;
+
+    if (kind === 'client') {
+      targetKind = 'clients';
+      payload = { ...form, status: form.status || 'Active' };
+    } else if (kind === 'project') {
+      targetKind = 'projects';
+      payload = {
+        ...form,
         clientName: client?.name || '',
         budget: Number(form.budget || 0),
         progress: Number(form.progress || 0),
         status: form.status || 'Planning',
-      });
-    if (kind === 'invoice')
-      onSave('invoices', {
-        ...base,
+      };
+    } else {
+      targetKind = 'invoices';
+      payload = {
+        ...form,
         clientName: client?.name || '',
         amount: Number(form.amount || 0),
         paid: Number(form.paid || 0),
         status: 'Unpaid',
-        number: form.number || 'INV-' + Date.now().toString().slice(-6),
-      });
+        number: form.number || '',
+      };
+    }
+
+    const signature = JSON.stringify({ kind: targetKind, payload });
+    if (!requestRef.current || requestRef.current.signature !== signature) {
+      requestRef.current = { signature, id: crypto.randomUUID() };
+    }
+    onSave(targetKind, { ...payload, requestId: requestRef.current.id });
   };
   const title =
     kind === 'client'
