@@ -27,3 +27,6 @@ The deployment QA snapshot reported zero frontend and network errors and zero ba
 ## Idempotent create retry scenario
 
 The client-creation workflow includes retrying an unchanged submission after a simulated lost response. The expected outcome is one saved client, with the original record returned on retry. Reusing the same request ID with different data must return HTTP 409. A request whose outcome cannot be reconciled returns HTTP 503 and must retain the same request ID for a safe retry.
+
+
+Database failure-path checks should verify quota and authorization failures are surfaced, while only duplicate-ID and unknown-outcome writes enter same-ID reconciliation. A retry must never generate a fresh request ID for an unchanged payload.
