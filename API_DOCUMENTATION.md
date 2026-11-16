@@ -16,3 +16,23 @@ Project writes accept `budget`; invoice writes accept `amount` and optional `pai
 Validation errors return HTTP 400; missing project update returns HTTP 404. Authentication failures are handled by AppDeploy middleware.
 
 Leads, tasks, quotations, expenses, payment callbacks, client portal, staff administration and organization management APIs are not implemented.
+
+
+## Workspace pagination
+
+- `GET /api/workspace` returns the first page of up to 100 clients, projects and invoices, plus `nextTokens` for collections with more records.
+- `GET /api/workspace?kind=clients&cursor=<opaque-token>` returns `{ items, nextToken? }` for one additional page. Supported kinds are `clients`, `projects` and `invoices`.
+- A cursor without a valid record kind is rejected. Cursors longer than 2,048 characters are rejected.
+- The client appends new rows and filters duplicate record IDs.
+
+## Concurrent project updates
+
+`PUT /api/projects/:id` uses the current server-side revision as a conditional write guard. Successful updates return `{ updated: true, revision }`. A stale update returns HTTP 409 with a reload-and-retry message.
+
+
+## Idempotent create requests
+
+`POST /api/clients`, `POST /api/projects` and `POST /api/invoices` require a UUID `requestId` in the JSON body. The same request ID and same normalized payload return the original created record. Reusing an ID with different content returns HTTP 409. If the write outcome cannot be confirmed, the API returns HTTP 503; retry the same unchanged submission with the same request ID. The internal request fingerprint is never returned.
+
+
+The create-write reconciliation path only performs a follow-up read for duplicate-ID or unknown-outcome database errors. Quota, authorization, gateway and other database failures are allowed to surface rather than being silently converted into a retry response.

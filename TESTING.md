@@ -12,3 +12,21 @@
 - Desktop and mobile layouts remain usable.
 
 Only report counts from an actual QA run or executed local command. No local npm build is claimed because the exported manifest does not include AppDeploy platform packages.
+
+
+## P1 data reliability scenarios
+
+The five workflow definitions now cover:
+- Loading additional client records beyond the first 100 without losing or duplicating earlier rows.
+- Editing the same project from two sessions; the stale second update must receive HTTP 409.
+- Existing client/project/invoice workflows and KES minor-unit calculations.
+
+The deployment QA snapshot reported zero frontend and network errors and zero backend errors. These are platform QA diagnostics, not a separately executed count of all five workflow scenarios.
+
+
+## Idempotent create retry scenario
+
+The client-creation workflow includes retrying an unchanged submission after a simulated lost response. The expected outcome is one saved client, with the original record returned on retry. Reusing the same request ID with different data must return HTTP 409. A request whose outcome cannot be reconciled returns HTTP 503 and must retain the same request ID for a safe retry.
+
+
+Database failure-path checks should verify quota and authorization failures are surfaced, while only duplicate-ID and unknown-outcome writes enter same-ID reconciliation. A retry must never generate a fresh request ID for an unchanged payload.

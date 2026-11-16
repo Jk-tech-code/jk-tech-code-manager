@@ -31,9 +31,16 @@
       "Try to save a client with an invalid email address",
       "Confirm the invalid record is rejected",
       "Enter a valid client name, company and email",
-      "Save the client and refresh the page"
+      "Save the client and refresh the page",
+      "Open the client directory and confirm the first page is displayed",
+      "Choose Load more and wait for the next page",
+      "Verify earlier clients remain visible and no duplicate rows appear",
+      "Simulate a lost save response and submit the unchanged client details again"
     ],
-    "expected": "Invalid email input is rejected and the valid client appears in the client directory after refresh."
+    "expected": "Invalid email input is rejected and the valid client appears in the client directory after refresh. When more than 100 clients exist, loading the next page appends additional clients without removing earlier rows or introducing duplicates. Repeating an unchanged submission with the same request ID returns the original client and does not create a duplicate.",
+    "setup": [
+      "Prepare an authenticated workspace containing more than 100 clients."
+    ]
   },
   {
     "name": "Create and update a project using a workspace client",
@@ -56,9 +63,12 @@
       "Change its status to In Progress",
       "Try an invalid progress value above 100",
       "Attempt to set the due date to impossible date 2026-02-31 and verify it is rejected",
-      "Set a valid due date of 2026-02-28 and save"
+      "Set a valid due date of 2026-02-28 and save",
+      "Open the same project in two browser sessions",
+      "Change and save the project in the first session",
+      "Attempt to save the stale project state from the second session"
     ],
-    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected. An impossible date such as 2026-02-31 is rejected, while 2026-02-28 is accepted."
+    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected. An impossible date such as 2026-02-31 is rejected, while 2026-02-28 is accepted. A stale concurrent update is rejected with a reload-and-retry message instead of overwriting the newer project change."
   },
   {
     "name": "Create an invoice and calculate outstanding balance",

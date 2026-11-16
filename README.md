@@ -49,3 +49,25 @@ The deployed release provides authenticated, user-scoped client, project and inv
 ## Engineering documentation
 
 See [Architecture](ARCHITECTURE.md), [Database schema](DATABASE_SCHEMA.md), [Security](SECURITY.md), [API](API_DOCUMENTATION.md), [Deployment](DEPLOYMENT.md), [Testing](TESTING.md), [Changelog](CHANGELOG.md), and [Implementation roadmap](IMPLEMENTATION_ROADMAP.md).
+
+
+## P1 data reliability update
+
+- Client, project and invoice lists use bounded 100-record pages and opaque continuation cursors.
+- The list views provide a Load more action; earlier rows are retained and duplicate IDs are filtered when pages are appended.
+- Project updates use a revision condition and patch write. A stale concurrent edit receives HTTP 409 rather than silently replacing a newer update.
+- Newly created records include revision and updated-at metadata. Existing projects without a revision are upgraded on their first successful edit.
+- Dashboard totals are based on records currently loaded into the workspace; the list pages expose further records on demand.
+
+This milestone does not yet implement request idempotency receipts, immutable payment ledger entries or organization-level tenancy.
+
+
+### Idempotent create requests
+
+- New client, project and invoice submissions carry a UUID request ID.
+- The request ID is reused when the same unchanged form is retried after a network or response failure.
+- The server uses a chosen database record ID and stores a payload fingerprint with the record. A retry returns the original record instead of creating a duplicate.
+- Reusing the same request ID for different data is rejected with HTTP 409. Uncertain outcomes return HTTP 503 and instruct the user to retry the unchanged submission.
+- Internal request fingerprints are not included in workspace API responses.
+
+This protects application create retries; it is not a payment-provider idempotency ledger.

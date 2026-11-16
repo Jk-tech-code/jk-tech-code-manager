@@ -1,4 +1,4 @@
-import { router, json, error, db, requireAuth } from '@appdeploy/sdk';
+import { router, json, error, db, requireAuth, isAppDatabaseError } from '@appdeploy/sdk';
 
 type RecordBody = Record<string, unknown>;
 type RecordKind = 'clients' | 'projects' | 'invoices';
@@ -46,13 +46,20 @@ const legacyMinorUnits = (minor: unknown, amount: unknown): number => {
   return toMinorUnits(amount) ?? 0;
 };
 
-async function listRecords(kind: RecordKind, userId: string) {
+async function listRecords(
+  kind: RecordKind,
+  userId: string,
+  nextToken?: string
+) {
   const result = await db.list<RecordBody>(tableFor(kind, userId), {
     limit: 100,
+    ...(nextToken ? { nextToken } : {}),
   });
 
   // Normalize legacy decimal records while exposing canonical minor units.
-  return result.items.map(item => {
+  const items = result.items.map(item => {
+    const { requestFingerprint: _requestFingerprint, ...publicItem } = item;
+    item = publicItem;
     if (kind === 'projects') {
       const budgetMinor = legacyMinorUnits(item.budgetMinor, item.budget);
       return { ...item, budgetMinor, budget: budgetMinor / 100 };
@@ -70,6 +77,8 @@ async function listRecords(kind: RecordKind, userId: string) {
     }
     return item;
   });
+
+  return { items, nextToken: result.nextToken };
 }
 
 async function getOwnedClient(userId: string, clientId: string) {
@@ -147,11 +156,21 @@ async function validateProject(
   };
 }
 
+type CreateResult = {
+  error?: string;
+  status?: number;
+  record?: RecordBody;
+};
+
 async function createRecord(
   kind: RecordKind,
   userId: string,
   body: RecordBody
-) {
+): Promise<CreateResult> {
+  const requestId = text(body.requestId, 64);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))
+    return { error: 'A valid request ID is required', status: 400 };
+
   let fields: RecordBody;
   if (kind === 'clients') {
     const result = validateClient(body);
@@ -179,7 +198,9 @@ async function createRecord(
     const paid = paidMinor / 100;
     const dueDate = body.dueDate ?? '';
     if (!validDate(dueDate)) return { error: 'Enter a valid invoice due date' };
-    const number = text(body.number, 40) || 'INV-' + Date.now().toString().slice(-8);
+    const number =
+      text(body.number, 40) ||
+      'INV-' + requestId.replace(/-/g, '').slice(0, 8).toUpperCase();
     fields = {
       number,
       clientId,
@@ -193,14 +214,67 @@ async function createRecord(
     };
   }
 
+  const table = tableFor(kind, userId);
+  const payloadFingerprint = JSON.stringify({ kind, fields });
+  const [existing] = await db.get<RecordBody>(table, [requestId], {
+    consistent: true,
+  });
+
+  if (existing) {
+    if (existing.requestFingerprint !== payloadFingerprint)
+      return {
+        error: 'This submission ID was already used for different details',
+        status: 409,
+      };
+    const { requestFingerprint: _requestFingerprint, ...savedRecord } = existing;
+    return { record: { ...savedRecord, id: requestId } };
+  }
+
+  const now = new Date().toISOString();
   const record = {
     ...fields,
     ownerId: userId,
-    createdAt: new Date().toISOString(),
+    revision: 1,
+    createdAt: now,
+    updatedAt: now,
+    requestFingerprint: payloadFingerprint,
   };
-  const [id] = await db.add(tableFor(kind, userId), [record]);
-  if (!id) return { error: 'Record could not be created' };
-  return { record: { ...record, id } };
+
+  try {
+    const [id] = await db.tx.add(table, [{ id: requestId, ...record }]);
+    if (id) {
+      const { requestFingerprint: _requestFingerprint, ...publicRecord } = record;
+      return { record: { ...publicRecord, id } };
+    }
+  } catch (err: unknown) {
+    // Only duplicate-ID and unknown-outcome results are reconciled. Quota,
+    // authorization, gateway and other write failures must remain visible.
+    if (
+      !isAppDatabaseError(err) ||
+      (err.code !== 'AppDatabaseDuplicateId' &&
+        err.code !== 'AppDatabaseUnknownOutcome')
+    ) {
+      throw err;
+    }
+  }
+
+  const [saved] = await db.get<RecordBody>(table, [requestId], {
+    consistent: true,
+  });
+  if (saved) {
+    if (saved.requestFingerprint !== payloadFingerprint)
+      return {
+        error: 'This submission ID was already used for different details',
+        status: 409,
+      };
+    const { requestFingerprint: _requestFingerprint, ...savedRecord } = saved;
+    return { record: { ...savedRecord, id: requestId } };
+  }
+
+  return {
+    error: 'The save outcome could not be confirmed. Retry the same unchanged submission.',
+    status: 503,
+  };
 }
 
 export const handler = router({
@@ -208,12 +282,40 @@ export const handler = router({
     requireAuth(),
     async ctx => {
       const userId = ctx.user!.userId;
+      const requestedKind = ctx.query.kind;
+      const cursor = ctx.query.cursor;
+
+      if (cursor && !requestedKind)
+        return error('A record type is required when using a page cursor', 400);
+      if (cursor && cursor.length > 2048)
+        return error('The page cursor is invalid', 400);
+
+      if (requestedKind) {
+        if (!['clients', 'projects', 'invoices'].includes(requestedKind))
+          return error('Choose a valid workspace record type', 400);
+        const page = await listRecords(
+          requestedKind as RecordKind,
+          userId,
+          cursor || undefined
+        );
+        return json(page);
+      }
+
       const [clients, projects, invoices] = await Promise.all([
         listRecords('clients', userId),
         listRecords('projects', userId),
         listRecords('invoices', userId),
       ]);
-      return json({ clients, projects, invoices });
+      return json({
+        clients: clients.items,
+        projects: projects.items,
+        invoices: invoices.items,
+        nextTokens: {
+          clients: clients.nextToken,
+          projects: projects.nextToken,
+          invoices: invoices.nextToken,
+        },
+      });
     },
   ],
   'POST /api/clients': [
@@ -222,7 +324,7 @@ export const handler = router({
       if (!isObject(ctx.body))
         return error('A valid client record is required', 400);
       const result = await createRecord('clients', ctx.user!.userId, ctx.body);
-      return result.error ? error(result.error, 400) : json(result.record, 201);
+      return result.error ? error(result.error, result.status || 400) : json(result.record, 201);
     },
   ],
   'POST /api/projects': [
@@ -231,7 +333,7 @@ export const handler = router({
       if (!isObject(ctx.body))
         return error('A valid project record is required', 400);
       const result = await createRecord('projects', ctx.user!.userId, ctx.body);
-      return result.error ? error(result.error, 400) : json(result.record, 201);
+      return result.error ? error(result.error, result.status || 400) : json(result.record, 201);
     },
   ],
   'PUT /api/projects/:id': [
@@ -255,14 +357,28 @@ export const handler = router({
       if (result.error) return error(result.error, 400);
 
       const record = {
+        ...current,
         ...result.record,
         ownerId: userId,
         createdAt: current.createdAt,
+        updatedAt: new Date().toISOString(),
+        revision:
+          Number.isSafeInteger(current.revision) && Number(current.revision) >= 0
+            ? Number(current.revision) + 1
+            : 1,
       };
-      const [updated] = await db.update(tableFor('projects', userId), [
-        { id: ctx.params.id, record },
-      ]);
-      return updated ? json({ updated: true }) : error('Project was not found', 404);
+      const [updated] = await db.tx.update(
+        tableFor('projects', userId),
+        [{
+          id: ctx.params.id,
+          record,
+          if: { revision: current.revision },
+        }],
+        { patch: true }
+      );
+      return updated
+        ? json({ updated: true, revision: record.revision })
+        : error('This project changed while you were editing it. Reload and try again.', 409);
     },
   ],
   'POST /api/invoices': [
@@ -271,7 +387,7 @@ export const handler = router({
       if (!isObject(ctx.body))
         return error('A valid invoice record is required', 400);
       const result = await createRecord('invoices', ctx.user!.userId, ctx.body);
-      return result.error ? error(result.error, 400) : json(result.record, 201);
+      return result.error ? error(result.error, result.status || 400) : json(result.record, 201);
     },
   ],
 });
