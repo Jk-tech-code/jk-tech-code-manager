@@ -23,3 +23,6 @@ Organization-level tenancy, staff roles, payment processing, audit trails and a 
 - Added chosen-ID writes and payload-fingerprint reconciliation so unchanged retries return the original record instead of creating duplicates.
 - Rejected request-ID reuse with different normalized content; returned a retry-safe HTTP 503 when a write outcome could not be confirmed.
 - Kept internal request fingerprints out of API responses and made generated invoice numbers stable across retries.
+
+
+- Narrowed idempotency reconciliation to duplicate-ID and unknown-outcome database errors so quota, authorization and other failures are not masked.
