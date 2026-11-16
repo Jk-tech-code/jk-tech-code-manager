@@ -54,9 +54,11 @@
       "Enter a service, budget and due date",
       "Save the project",
       "Change its status to In Progress",
-      "Try an invalid progress value above 100"
+      "Try an invalid progress value above 100",
+      "Attempt to set the due date to impossible date 2026-02-31 and verify it is rejected",
+      "Set a valid due date of 2026-02-28 and save"
     ],
-    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected."
+    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected. An impossible date such as 2026-02-31 is rejected, while 2026-02-28 is accepted."
   },
   {
     "name": "Create an invoice and calculate outstanding balance",
@@ -101,26 +103,5 @@
       "Attempt to create an invoice with an amount containing three decimal places, such as 10.123"
     ],
     "expected": "The project and invoice retain their exact two-decimal values, the paid amount is KES 200.25, the outstanding amount is KES 1050.50, and the three-decimal amount is rejected."
-  },
-  {
-    "name": "Reject impossible calendar dates",
-    "viewport": "mobile",
-    "covers": [
-      "strict ISO calendar date validation",
-      "rejection of normalized invalid dates",
-      "valid due-date persistence"
-    ],
-    "description": "Verifies date validation rejects dates that JavaScript would otherwise normalize into another month.",
-    "setup": [
-      "Create a client named Date Validation Ltd"
-    ],
-    "steps": [
-      "Open Projects and create a project",
-      "Enter a valid project name and select Date Validation Ltd",
-      "Set the due date to 2026-02-31 and save",
-      "Confirm the date is rejected",
-      "Change the due date to 2026-02-28 and save"
-    ],
-    "expected": "The impossible February 31 date is rejected and February 28 is accepted."
   }
 ]
