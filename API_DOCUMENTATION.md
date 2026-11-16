@@ -28,3 +28,8 @@ Leads, tasks, quotations, expenses, payment callbacks, client portal, staff admi
 ## Concurrent project updates
 
 `PUT /api/projects/:id` uses the current server-side revision as a conditional write guard. Successful updates return `{ updated: true, revision }`. A stale update returns HTTP 409 with a reload-and-retry message.
+
+
+## Idempotent create requests
+
+`POST /api/clients`, `POST /api/projects` and `POST /api/invoices` require a UUID `requestId` in the JSON body. The same request ID and same normalized payload return the original created record. Reusing an ID with different content returns HTTP 409. If the write outcome cannot be confirmed, the API returns HTTP 503; retry the same unchanged submission with the same request ID. The internal request fingerprint is never returned.
