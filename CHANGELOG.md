@@ -17,3 +17,9 @@ Organization-level tenancy, staff roles, payment processing, audit trails and a 
 - Added record revision and updated-at metadata.
 - Replaced project full-record replacement with conditional patch updates to prevent stale concurrent edits from silently overwriting newer values.
 - Added pagination and concurrent-update workflow coverage.
+
+
+- Added stable UUID request IDs to client, project and invoice creation.
+- Added chosen-ID writes and payload-fingerprint reconciliation so unchanged retries return the original record instead of creating duplicates.
+- Rejected request-ID reuse with different normalized content; returned a retry-safe HTTP 503 when a write outcome could not be confirmed.
+- Kept internal request fingerprints out of API responses and made generated invoice numbers stable across retries.
