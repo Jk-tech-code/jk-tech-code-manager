@@ -9,3 +9,11 @@
 - Added architecture, database, security, API, deployment, testing and roadmap documentation.
 
 Organization-level tenancy, staff roles, payment processing, audit trails and a production accounting ledger are not part of this milestone.
+
+
+## P1 — Data reliability
+- Added 100-record cursor pagination for clients, projects and invoices.
+- Added Load more controls that append pages while retaining existing records and filtering duplicate IDs.
+- Added record revision and updated-at metadata.
+- Replaced project full-record replacement with conditional patch updates to prevent stale concurrent edits from silently overwriting newer values.
+- Added pagination and concurrent-update workflow coverage.
