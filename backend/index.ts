@@ -1,4 +1,4 @@
-import { router, json, error, db, requireAuth } from '@appdeploy/sdk';
+import { router, json, error, db, requireAuth, isAppDatabaseError } from '@appdeploy/sdk';
 
 type RecordBody = Record<string, unknown>;
 type RecordKind = 'clients' | 'projects' | 'invoices';
@@ -246,9 +246,16 @@ async function createRecord(
       const { requestFingerprint: _requestFingerprint, ...publicRecord } = record;
       return { record: { ...publicRecord, id } };
     }
-  } catch {
-    // Reconcile below using the same stable request ID. Never create a new ID
-    // after an uncertain outcome because the original write may have committed.
+  } catch (err: unknown) {
+    // Only duplicate-ID and unknown-outcome results are reconciled. Quota,
+    // authorization, gateway and other write failures must remain visible.
+    if (
+      !isAppDatabaseError(err) ||
+      (err.code !== 'AppDatabaseDuplicateId' &&
+        err.code !== 'AppDatabaseUnknownOutcome')
+    ) {
+      throw err;
+    }
   }
 
   const [saved] = await db.get<RecordBody>(table, [requestId], {
