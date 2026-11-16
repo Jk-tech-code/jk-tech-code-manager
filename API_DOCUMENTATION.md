@@ -33,3 +33,6 @@ Leads, tasks, quotations, expenses, payment callbacks, client portal, staff admi
 ## Idempotent create requests
 
 `POST /api/clients`, `POST /api/projects` and `POST /api/invoices` require a UUID `requestId` in the JSON body. The same request ID and same normalized payload return the original created record. Reusing an ID with different content returns HTTP 409. If the write outcome cannot be confirmed, the API returns HTTP 503; retry the same unchanged submission with the same request ID. The internal request fingerprint is never returned.
+
+
+The create-write reconciliation path only performs a follow-up read for duplicate-ID or unknown-outcome database errors. Quota, authorization, gateway and other database failures are allowed to surface rather than being silently converted into a retry response.
