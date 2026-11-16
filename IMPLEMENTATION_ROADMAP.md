@@ -24,3 +24,8 @@ Do not begin broad redesign while P0/P1 correctness gates remain open. Deliver e
 
 
 - **P1 Data reliability:** pagination, optimistic project concurrency and idempotent client/project/invoice creation are implemented. Remaining P1 work includes broader audit events and measured load/performance testing.
+
+
+## Phase 2 execution status
+
+A dedicated `phase-2-tenancy` branch now contains `TENANCY_MIGRATION_PLAN.md`. Implementation is gated on confirming AppDeploy's supported table-catalog provisioning mechanism. The migration must preserve all existing user-scoped records and prove destination counts/fingerprints before any organization-level cutover. Organization sharing and invitations are not enabled yet.
