@@ -22,53 +22,63 @@
     "covers": [
       "client creation",
       "required client-name validation",
+      "email format and client-status validation",
       "database persistence and workspace reload"
     ],
-    "description": "Verifies client details can be saved and remain available after the workspace reloads.",
+    "description": "Verifies client details are validated, saved and retained after the workspace reloads.",
     "steps": [
       "Open Clients and choose Add client",
-      "Enter a client name, company and email",
-      "Save the client",
-      "Refresh the page and return to Clients"
+      "Try to save a client with an invalid email address",
+      "Confirm the invalid record is rejected",
+      "Enter a valid client name, company and email",
+      "Save the client and refresh the page"
     ],
-    "expected": "The newly created client appears in the client directory after refresh."
+    "expected": "Invalid email input is rejected and the valid client appears in the client directory after refresh."
   },
   {
-    "name": "Create and update a project",
+    "name": "Create and update a project using a workspace client",
     "viewport": "desktop",
     "covers": [
       "project creation and client association",
-      "project budget and deadline",
+      "workspace ownership validation for client references",
+      "project budget and deadline validation",
       "project status update",
-      "progress display"
+      "progress range validation"
     ],
-    "description": "Verifies a project can be created for a client and its delivery status can be changed.",
-    "setup": ["Create a client named Acme Studio"],
+    "description": "Verifies projects can only reference clients in the signed-in workspace and progress stays within the supported range.",
+    "setup": [
+      "Create a client named Acme Studio"
+    ],
     "steps": [
       "Open Projects and create a project for Acme Studio",
       "Enter a service, budget and due date",
       "Save the project",
-      "Change its status to In Progress"
+      "Change its status to In Progress",
+      "Try an invalid progress value above 100"
     ],
-    "expected": "The project appears with its client, budget and deadline, and the selected status remains visible."
+    "expected": "The valid project is saved with the selected client and status; an out-of-range progress update is rejected."
   },
   {
     "name": "Create an invoice and calculate outstanding balance",
     "viewport": "mobile",
     "covers": [
       "invoice creation and client association",
-      "payment amount tracking",
+      "invoice amount validation",
+      "payment amount cannot exceed invoice total",
       "outstanding balance calculation",
       "responsive mobile forms and tables"
     ],
-    "description": "Verifies an invoice records its amount and paid portion and the dashboard reflects the remaining balance.",
-    "setup": ["Create a client named Northstar Ltd"],
+    "description": "Verifies invoice amounts and partial payments are constrained and the dashboard reflects the outstanding balance.",
+    "setup": [
+      "Create a client named Northstar Ltd"
+    ],
     "steps": [
       "Open Invoices and choose New invoice",
       "Select Northstar Ltd and enter an amount of 50000 with 10000 paid",
       "Save the invoice",
-      "Open Overview"
+      "Open Overview",
+      "Attempt to save an invoice with paid amount greater than its total"
     ],
-    "expected": "The invoice shows KES 50,000 total and KES 10,000 paid, and outstanding balance increases by KES 40,000."
+    "expected": "The valid invoice shows KES 50,000 total and KES 10,000 paid; an overpayment input is rejected."
   }
 ]
