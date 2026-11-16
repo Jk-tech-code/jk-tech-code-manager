@@ -34,9 +34,10 @@
       "Save the client and refresh the page",
       "Open the client directory and confirm the first page is displayed",
       "Choose Load more and wait for the next page",
-      "Verify earlier clients remain visible and no duplicate rows appear"
+      "Verify earlier clients remain visible and no duplicate rows appear",
+      "Simulate a lost save response and submit the unchanged client details again"
     ],
-    "expected": "Invalid email input is rejected and the valid client appears in the client directory after refresh. When more than 100 clients exist, loading the next page appends additional clients without removing earlier rows or introducing duplicates.",
+    "expected": "Invalid email input is rejected and the valid client appears in the client directory after refresh. When more than 100 clients exist, loading the next page appends additional clients without removing earlier rows or introducing duplicates. Repeating an unchanged submission with the same request ID returns the original client and does not create a duplicate.",
     "setup": [
       "Prepare an authenticated workspace containing more than 100 clients."
     ]
