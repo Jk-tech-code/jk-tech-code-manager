@@ -60,6 +60,9 @@ type Invoice = {
   createdAt: string;
 };
 type Data = { clients: Client[]; projects: Project[]; invoices: Invoice[] };
+type RecordKind = keyof Data;
+type RecordItem = Client | Project | Invoice;
+type WorkspacePage = { items: RecordItem[]; nextToken?: string };
 type Section = 'Overview' | 'Clients' | 'Projects' | 'Invoices';
 
 const empty: Data = { clients: [], projects: [], invoices: [] };
@@ -104,7 +107,9 @@ function App() {
   } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [data, setData] = useState<Data>(empty);
+  const [nextTokens, setNextTokens] = useState<Partial<Record<RecordKind, string>>>({});
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState<RecordKind | null>(null);
   const [section, setSection] = useState<Section>('Overview');
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState<'client' | 'project' | 'invoice' | null>(
@@ -118,10 +123,47 @@ function App() {
     setLoading(true);
     try {
       const result = await api.get('/api/workspace');
-      setData(result.data as Data);    } catch {
+      const workspace = result.data as Data & {
+        nextTokens?: Partial<Record<RecordKind, string>>;
+      };
+      setData({
+        clients: workspace.clients || [],
+        projects: workspace.projects || [],
+        invoices: workspace.invoices || [],
+      });
+      setNextTokens(workspace.nextTokens || {});
+    } catch {
       setNotice('Could not load your workspace. Please refresh and try again.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMore(kind: RecordKind) {
+    const cursor = nextTokens[kind];
+    if (!cursor || loadingMore) return;
+
+    setLoadingMore(kind);
+    try {
+      const result = await api.get(
+        '/api/workspace?kind=' + kind + '&cursor=' + encodeURIComponent(cursor)
+      );
+      const page = result.data as WorkspacePage;
+      const existingIds = new Set(data[kind].map(item => item.id));
+      const newItems = page.items.filter(item => !existingIds.has(item.id));
+
+      setData(previous => ({
+        ...previous,
+        [kind]: [...previous[kind], ...newItems],
+      }) as Data);
+      setNextTokens(previous => ({
+        ...previous,
+        [kind]: page.nextToken,
+      }));
+    } catch {
+      setNotice('Could not load more records. Please try again.');
+    } finally {
+      setLoadingMore(null);
     }
   }
 
@@ -197,6 +239,14 @@ function App() {
   const filteredInvoices = data.invoices.filter(i =>
     (i.number + ' ' + i.clientName).toLowerCase().includes(query.toLowerCase())
   );
+  const activeKind: RecordKind | null =
+    section === 'Clients'
+      ? 'clients'
+      : section === 'Projects'
+        ? 'projects'
+        : section === 'Invoices'
+          ? 'invoices'
+          : null;
 
   if (authLoading)
     return (
@@ -545,7 +595,7 @@ function App() {
                     : section === 'Projects'
                       ? filteredProjects.length
                       : filteredInvoices.length}{' '}
-                  records
+                  {activeKind && nextTokens[activeKind] ? 'loaded' : 'records'}
                 </span>
               </div>
               {loading ? (
@@ -709,6 +759,20 @@ function App() {
                       onClick={() => setModal('invoice')}
                     />
                   )}
+                </div>
+              )}
+              {activeKind && nextTokens[activeKind] && (
+                <div className="table-pagination">
+                  <span>
+                    {data[activeKind].length} records loaded. More records are available.
+                  </span>
+                  <button
+                    className="secondary"
+                    disabled={loadingMore !== null}
+                    onClick={() => loadMore(activeKind)}
+                  >
+                    {loadingMore === activeKind ? 'Loading…' : 'Load more'}
+                  </button>
                 </div>
               )}
             </section>
