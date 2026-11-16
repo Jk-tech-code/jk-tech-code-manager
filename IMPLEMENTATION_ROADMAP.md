@@ -14,3 +14,10 @@
 | P9 | SaaS operations | Plans, entitlements, onboarding, super-admin, exports, backups | Restore drill and tenant isolation review |
 
 Do not begin broad redesign while P0/P1 correctness gates remain open. Deliver each workstream in independently reviewable milestones.
+
+
+## Status update
+
+- **P0 Foundation:** delivered in the Phase 1 foundation branch.
+- **P1 Data reliability:** initial milestone delivered — bounded cursor pagination and conditional project updates are implemented. Remaining P1 work includes request-idempotency receipts, safe retry/reconciliation patterns, broader audit events and measured load/performance testing.
+- **P2 Team and tenancy:** next — organization membership, role permissions and cross-tenant isolation.
